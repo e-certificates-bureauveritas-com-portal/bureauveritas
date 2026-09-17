@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Muqeem Auto-Filler v5.3 (Fixed A4 Alignment & High Res)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<style>
+/* DIN Next LT Arabic Regular ফন্ট ইমপোর্ট */
+@import url('https://fonts.cdnfonts.com/css/din-next-lt-arabic');
+
+:root {
+  --green:#10b981; --green-dark:#059669;
+  --orange:#f59e0b; --orange-dark:#d97706;
+  --bg:#f1f5f9; --panel:#ffffff;
+  --border:#e2e8f0; --text:#1e293b;
+  --muted:#64748b; --danger:#ef4444;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DIN Next LT Arabic', Tahoma, sans-serif;background:var(--bg);display:flex;height:100vh;overflow:hidden;}
+
+.panel{width:340px;min-width:300px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;}
+.panel-header{background:#1e293b;color:white;padding:14px 20px;font-size:17px;font-weight:400;letter-spacing:.4px;flex-shrink:0;}
+.panel-header span{font-size:15px;font-weight:400;color:#94a3b8;display:block;margin-top:2px;}
+.panel-body{overflow-y:auto;flex:1;padding:14px;}
+
+.paste-box{background:#fffbeb;border:1.5px dashed var(--orange);border-radius:8px;padding:11px;margin-bottom:14px;}
+.paste-box label{font-size:13px;font-weight:400;color:var(--orange-dark);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:5px;}
+.paste-box textarea{width:100%;height:85px;border:1px solid #fcd34d;border-radius:6px;padding:8px;font-size:13px;resize:vertical;color:var(--text);background:white;}
+.paste-box textarea:focus{outline:none;border-color:var(--orange);}
+.parse-btn{width:100%;margin-top:7px;background:var(--orange-dark);color:white;border:none;padding:8px;border-radius:6px;font-size:13px;font-weight:400;cursor:pointer;transition:background .2s;}
+.parse-btn:hover{background:#b45309;}
+
+.parse-status{font-size:15.5px;margin-top:5px;padding:5px 8px;border-radius:5px;display:none;}
+.parse-status.ok{background:#d1fae5;color:#065f46;display:block;}
+.parse-status.warn{background:#fef9c3;color:#713f12;display:block;}
+
+.sec-title{font-size:15.5px;font-weight:400;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin:16px 0 7px;border-bottom:1px solid var(--border);padding-bottom:3px;}
+.fg{margin-bottom:8px;}
+.fg label{font-size:15px;color:var(--muted);display:block;margin-bottom:2px;}
+.fg input{width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:6px;font-size:13px;color:var(--text);transition:border-color .2s;font-family:'DIN Next LT Arabic', sans-serif;font-weight:400;}
+.fg input:focus{outline:none;border-color:var(--green);}
+.fg input.filled{background:#f0fdf4;border-color:#86efac;}
+.fg input[readonly]{background:#f8fafc;color:#475569;cursor:default;}
+
+.hijri-badge{font-size:13.5px;color:#7c3aed;background:#ede9fe;padding:1px 5px;border-radius:4px;margin-left:4px;display:none;}
+.today-badge{font-size:13.5px;color:#0369a1;background:#e0f2fe;padding:1px 5px;border-radius:4px;margin-left:4px;}
+
+.panel-footer{padding:12px 14px;background:#f8fafc;border-top:1px solid var(--border);flex-shrink:0;}
+.dl-btn{width:100%;background:var(--green);color:white;border:none;padding:11px;border-radius:8px;font-size:16px;font-weight:400;cursor:pointer;transition:background .2s,transform .1s;display:flex;align-items:center;justify-content:center;gap:8px;}
+.dl-btn:hover{background:var(--green-dark);}
+.dl-btn:active{transform:scale(.98);}
+.dl-btn:disabled{background:#94a3b8;cursor:not-allowed;}
+.clear-btn{width:100%;margin-top:7px;background:transparent;color:var(--danger);border:1px solid #fca5a5;padding:7px;border-radius:6px;font-size:16px;cursor:pointer;transition:background .2s;}
+.clear-btn:hover{background:#fef2f2;}
+
+.preview-area{flex:1;overflow:auto;background:#94a3b8;display:flex;flex-direction:column;align-items:center;padding:22px 14px;gap:10px;}
+.preview-toolbar{display:flex;align-items:center;gap:10px;background:#1e293b;color:white;padding:8px 16px;border-radius:8px;font-size:16px;width:1653px;max-width:100%;}
+.preview-toolbar span{opacity:.6;font-size:15px;}
+.zoom-btns{margin-left:auto;display:flex;gap:5px;}
+.zoom-btn{background:#334155;border:none;color:white;width:27px;height:27px;border-radius:4px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;}
+.zoom-btn:hover{background:#475569;}
+
+.doc-scaler{transform-origin:top center;transition:transform .2s;}
+/* নিখুঁত A4 অ্যাসপেক্ট রেশিও এবং html2pdf ফ্রেম ম্যাচিং */
+#pdf-area{position:relative;width:1653px;height:2339px;background-color:white;background-size:100% 100%;background-repeat:no-repeat;box-shadow:0 8px 30px rgba(0,0,0,.25);flex-shrink:0;}
+#img-status{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#94a3b8;pointer-events:none;}
+#img-status p{font-size:17px;margin-top:6px;}
+
+/* DIN Next Regular টেক্সট ফর্ম্যাটিং এবং নিখুঁত কোঅর্ডিনেটস */
+.ft{position:absolute;font-size:28px;color:#000;font-weight:400;white-space:nowrap;pointer-events:none;font-family:'DIN Next LT Arabic', sans-serif;}
+/* Arabic PDF rendering text-spacing tissue solve korar jonno style update */
+.ft.rtl {
+  direction: rtl; 
+  text-align: right; 
+  unicode-bidi: bidi-override;
+  letter-spacing: normal;
+  word-spacing: normal;
+}
+/* Sponsor name jeno kokhono dui line-e na jay setar poriborton */
+.ft.wrap{white-space:nowrap; max-width: none;}
+
+/* স্ক্রিনশট ও অফিসিয়াল ফরম্যাট অনুযায়ী ১০০% নিখুঁত এক্স্যাক্ট পজিশন */
+#v-report-date {top:93px; left:1393px;}
+#v-operator-id {top:149px; left:1393px;}
+#v-iqama-num   {top:426px;left:287px;}
+#v-version     {top:426px;left:804px;}
+#v-gender      {top:426px;left:1330px;}
+#v-name        {top:490px;left:339px;}
+#v-trans-name  {top:557px;left:339px;}
+#v-birth-date  {top:625px;left:287px;}
+#v-birth-ctry  {top:625px;left:804px;}
+#v-marital     {top:625px;left:1330px;}
+#v-religion    {top:690px;left:287px;}
+#v-occupation  {top:690px;left:804px;}
+#v-entry-date  {top:756px;left:804px;}
+#v-entry-loc   {top:756px;left:1330px;}
+#v-pass-num    {top:960px;left:287px;}
+#v-nationality {top:960px;left:804px;}
+#v-pass-issue  {top:1025px;left:287px;}
+#v-pass-expiry {top:1025px;left:804px;}
+#v-pass-loc    {top:1025px;left:1330px;}
+#v-iqama-issue {top:1228px;left:287px;}
+#v-iqama-expiry{top:1228px;left:804px;}
+#v-iqama-loc   {top:1228px;left:1330px;}
+#v-emp-num     {top:1435px;left:287px;}
+#v-emp-name    {top:1500px;left:287px;}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <div class="panel-header">
+    Muqeem Engine v5.3
+    <span>Umm al-Qura Hijri · DIN Regular Fixed</span>
+  </div>
+
+  <div class="panel-body">
+    <div class="paste-box" style="background:#eff6ff;border-color:#3b82f6;margin-bottom:11px;">
+      <label style="color:#1d4ed8;">Template Image</label>
+      <input type="file" id="bg-upload" accept="image/*" style="font-size:12px;width:100%;" onchange="loadBgImage(this)">
+      <p id="bg-status" style="font-size:11px;color:#64748b;margin-top:3px;">Muqeem template image upload করুন</p>
+    </div>
+
+    <div class="paste-box">
+      <label>📋 Muqeem Portal Text</label>
+      <textarea id="global-input" placeholder="Muqeem portal থেকে text copy করে paste করুন..."></textarea>
+      <button class="parse-btn" onclick="parseAndFill()">⚡ Auto Parse &amp; Fill</button>
+      <div id="parse-status" class="parse-status"></div>
+    </div>
+
+    <div class="sec-title">Meta Header</div>
+    <div class="fg">
+      <label>Report Date <span class="today-badge">auto: Hijri today</span></label>
+      <input type="text" id="i-report-date" readonly placeholder="Hijri date auto">
+    </div>
+    <div class="fg"><label>Operator ID</label><input type="text" id="i-operator-id" oninput="syncManual('operator-id',this)"></div>
+
+    <div class="sec-title">Person Information</div>
+    <div class="fg"><label>ID Number</label><input type="text" id="i-iqama-num" oninput="syncManual('iqama-num',this)"></div>
+    <div class="fg"><label>ID Version</label><input type="text" id="i-version" oninput="syncManual('version',this)"></div>
+    <div class="fg"><label>Gender</label><input type="text" id="i-gender" oninput="syncManual('gender',this)"></div>
+    <div class="fg"><label>Name</label><input type="text" id="i-name" oninput="syncManual('name',this)"></div>
+    <div class="fg"><label>Translated Name (Arabic)</label><input type="text" id="i-trans-name" dir="auto" oninput="syncManual('trans-name',this)"></div>
+    <div class="fg">
+      <label>Date of Birth <span class="hijri-badge" id="badge-birth-date">Hijri ✓</span></label>
+      <input type="text" id="i-birth-date" placeholder="dd/mm/yyyy" oninput="syncHijri('birth-date',this)">
+    </div>
+    <div class="fg"><label>Nationality</label><input type="text" id="i-birth-ctry" oninput="syncManual('birth-ctry',this)"></div>
+    <div class="fg"><label>Marital Status</label><input type="text" id="i-marital" oninput="syncManual('marital',this)"></div>
+    <div class="fg"><label>Religion</label><input type="text" id="i-religion" oninput="syncManual('religion',this)"></div>
+    <div class="fg"><label>Occupation</label><input type="text" id="i-occupation" oninput="syncManual('occupation',this)"></div>
+    <div class="fg">
+      <label>Entry Date <span class="hijri-badge" id="badge-entry-date">Hijri ✓</span></label>
+      <input type="text" id="i-entry-date" placeholder="dd/mm/yyyy" oninput="syncHijri('entry-date',this)">
+    </div>
+    <div class="fg"><label>Entry Place</label><input type="text" id="i-entry-loc" oninput="syncManual('entry-loc',this)"></div>
+
+    <div class="sec-title">Passport Information</div>
+    <div class="fg"><label>Passport Number</label><input type="text" id="i-pass-num" oninput="syncManual('pass-num',this)"></div>
+    <div class="fg"><label>Nationality</label><input type="text" id="i-nationality" oninput="syncManual('nationality',this)"></div>
+    <div class="fg">
+      <label>Issue Date <span class="hijri-badge" id="badge-pass-issue">Hijri ✓</span></label>
+      <input type="text" id="i-pass-issue" placeholder="dd/mm/yyyy" oninput="syncHijri('pass-issue',this)">
+    </div>
+    <div class="fg">
+      <label>Expiry Date <span class="hijri-badge" id="badge-pass-expiry">Hijri ✓</span></label>
+      <input type="text" id="i-pass-expiry" placeholder="dd/mm/yyyy" oninput="syncHijri('pass-expiry',this)">
+    </div>
+    <div class="fg"><label>Issue Place</label><input type="text" id="i-pass-loc" oninput="syncManual('pass-loc',this)"></div>
+
+    <div class="sec-title">Iqama / Residency</div>
+    <div class="fg">
+      <label>Issue Date <span class="hijri-badge" id="badge-iqama-issue">Hijri ✓</span></label>
+      <input type="text" id="i-iqama-issue" placeholder="dd/mm/yyyy" oninput="syncHijri('iqama-issue',this)">
+    </div>
+    <div class="fg">
+      <label>Residency Expiry Date <span class="hijri-badge" id="badge-iqama-expiry">Hijri ✓</span></label>
+      <input type="text" id="i-iqama-expiry" placeholder="dd/mm/yyyy" oninput="syncHijri('iqama-expiry',this)">
+    </div>
+    <div class="fg"><label>Issue Place</label><input type="text" id="i-iqama-loc" oninput="syncManual('iqama-loc',this)"></div>
+
+    <div class="sec-title">Sponsor Information</div>
+    <div class="fg"><label>Sponsor ID</label><input type="text" id="i-emp-num" oninput="syncManual('emp-num',this)"></div>
+    <div class="fg"><label>Sponsor Name</label><input type="text" id="i-emp-name" oninput="syncManual('emp-name',this)"></div>
+  </div>
+
+  <div class="panel-footer">
+    <button class="dl-btn" id="dl-btn" onclick="downloadPDF()">⬇ Download PDF</button>
+    <button class="clear-btn" onclick="clearAll()">🗑 Clear All Fields</button>
+  </div>
+</div>
+
+<div class="preview-area">
+  <div class="preview-toolbar">
+    <strong>Live Preview</strong>
+    <span>A4 · Ultra Precision (300 DPI)</span>
+    <div class="zoom-btns">
+      <button class="zoom-btn" onclick="zoomOut()">−</button>
+      <button class="zoom-btn" onclick="zoomIn()">+</button>
+      <button class="zoom-btn" onclick="zoomReset()" style="font-size:12px;">⊙</button>
+    </div>
+  </div>
+
+  <div class="doc-scaler" id="doc-scaler">
+    <div id="pdf-area">
+      <div id="img-status">
+        <svg width="48" height="48" fill="none" stroke="#cbd5e1" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+        <p>Template image upload করুন<br>অথবা সরাসরি field fill করুন</p>
+      </div>
+      <div class="ft" id="v-report-date"></div>
+      <div class="ft" id="v-operator-id"></div>
+      <div class="ft" id="v-iqama-num"></div>
+      <div class="ft" id="v-version"></div>
+      <div class="ft" id="v-gender"></div>
+      <div class="ft" id="v-name"></div>
+      <div class="ft rtl" id="v-trans-name"></div>
+      <div class="ft" id="v-birth-date"></div>
+      <div class="ft" id="v-birth-ctry"></div>
+      <div class="ft" id="v-marital"></div>
+      <div class="ft" id="v-religion"></div>
+      <div class="ft" id="v-occupation"></div>
+      <div class="ft" id="v-entry-date"></div>
+      <div class="ft" id="v-entry-loc"></div>
+      <div class="ft" id="v-pass-num"></div>
+      <div class="ft" id="v-nationality"></div>
+      <div class="ft" id="v-pass-issue"></div>
+      <div class="ft" id="v-pass-expiry"></div>
+      <div class="ft" id="v-pass-loc"></div>
+      <div class="ft" id="v-iqama-issue"></div>
+      <div class="ft" id="v-iqama-expiry"></div>
+      <div class="ft" id="v-iqama-loc"></div>
+      <div class="ft" id="v-emp-num"></div>
+      <div class="ft wrap" id="v-emp-name"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// 1. ZOOM
+// ═══════════════════════════════════════════════════
+let scale = 0.75;
+const scaler = document.getElementById('doc-scaler');
+function applyZoom(){ scaler.style.transform=`scale(${scale})`; }
+function zoomIn()   { scale=Math.min(scale+0.1,1.5); applyZoom(); }
+function zoomOut()  { scale=Math.max(scale-0.1,0.4); applyZoom(); }
+function zoomReset(){ scale=0.75; applyZoom(); }
+applyZoom();
+
+// ═══════════════════════════════════════════════════
+// 2. BG IMAGE LOADER
+// ═══════════════════════════════════════════════════
+function loadBgImage(input){
+  const file=input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    document.getElementById('pdf-area').style.backgroundImage=`url('${e.target.result}')`;
+    document.getElementById('img-status').style.display='none';
+    document.getElementById('bg-status').textContent='✅ '+file.name+' loaded';
+    document.getElementById('bg-status').style.color='#065f46';
+  };
+  reader.readAsDataURL(file);
+}
+
+// ═══════════════════════════════════════════════════
+// 3. UMM AL-QURA HIJRI CONVERTER
+// ═══════════════════════════════════════════════════
+function gregorianToHijri(day, month, year) {
+  try {
+    const date = new Date(year, month - 1, day);
+    if (isNaN(date.getTime())) return null;
+
+    const formatter = new Intl.DateTimeFormat('en-TN-u-ca-islamic-umalqura', {
+      day: 'numeric', month: 'numeric', year: 'numeric'
+    });
+
+    const parts = formatter.formatToParts(date);
+    let hDay = '', hMonth = '', hYear = '';
+
+    for (const part of parts) {
+      if (part.type === 'day') hDay = part.value.padStart(2, '0');
+      if (part.type === 'month') hMonth = part.value.padStart(2, '0');
+      if (part.type === 'year') hYear = part.value;
+    }
+    return `${hYear}-${hMonth}-${hDay}`;
+  } catch (e) {
+    return null;
+  }
+}
+
+function parseGregorian(val) {
+  const cleaned = val.trim();
+  let match = cleaned.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (match) return { d: +match[1], mo: +match[2], y: +match[3] };
+  
+  match = cleaned.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (match) return { d: +match[3], mo: +match[2], y: +match[1] };
+
+  return null;
+}
+
+function toHijriString(val){
+  const g = parseGregorian(val);
+  return g ? gregorianToHijri(g.d, g.mo, g.y) : null;
+}
+
+// ═══════════════════════════════════════════════════
+// 4. REPORT DATE — AUTO SET TO TODAY
+// ═══════════════════════════════════════════════════
+function setTodayHijri(){
+  const now=new Date();
+  const hijriStr=gregorianToHijri(now.getDate(), now.getMonth()+1, now.getFullYear());
+  const inp=document.getElementById('i-report-date');
+  if(hijriStr) {
+    inp.value=hijriStr;
+    inp.classList.add('filled');
+    document.getElementById('v-report-date').innerText=hijriStr;
+  }
+}
+setTodayHijri();
+
+// ═══════════════════════════════════════════════════
+// 5. SYNC HELPERS
+// ═══════════════════════════════════════════════════
+const HIJRI_FIELDS=['birth-date','entry-date','pass-issue','pass-expiry','iqama-issue','iqama-expiry'];
+
+function setView(id,val){
+  const el=document.getElementById('v-'+id);
+  if(el) el.innerText=val;
+}
+
+function syncManual(id,input){
+  const val=input.value;
+  setView(id,val);
+  input.classList.toggle('filled',val.trim().length>0);
+}
+
+function syncHijri(id,input){
+  const raw=input.value;
+  const hijri=toHijriString(raw);
+  const badge=document.getElementById('badge-'+id);
+  if(hijri){
+    setView(id,hijri);
+    if(badge) badge.style.display='inline';
+  } else {
+    setView(id,raw);
+    if(badge) badge.style.display='none';
+  }
+  input.classList.toggle('filled',raw.trim().length>0);
+}
+
+function setField(id,value){
+  const inp=document.getElementById('i-'+id);
+  if(!inp) return;
+  inp.value=value;
+  inp.classList.toggle('filled',value.trim().length>0);
+  if(HIJRI_FIELDS.includes(id)){
+    const hijri=toHijriString(value);
+    const badge=document.getElementById('badge-'+id);
+    if(hijri){
+      setView(id,hijri);
+      if(badge) badge.style.display='inline';
+    } else {
+      setView(id,value);
+      if(badge) badge.style.display='none';
+    }
+  } else {
+    setView(id,value);
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// 6. SMART PARSER WITH PASSPORT EXTRACTION
+// ═══════════════════════════════════════════════════
+const FIELD_PATTERNS=[
+  ['report-date', ['report date','date of report','تاريخ التقرير']],
+  ['operator-id', ['operator id','operator','مشغل','المشغل']],
+  ['iqama-num',   ['id number','iqama number','iqama no','residence id','رقم الهوية','رقم الإقامة','رقم بطاقة']],
+  ['version',     ['id version','version number','version no','version']],
+  ['gender',      ['gender','sex']],
+  ['name',        ['name in english','english name','full name','name']],
+  ['trans-name',  ['translated name','arabic name','الاسم بالعربية','الاسم']],
+  ['birth-date',  ['date of birth','birth date','dob','تاريخ الميلاد']],
+  ['birth-ctry',  ['nationality','birth country','country of birth','الجنسية','بلد الميلاد']],
+  ['marital',     ['marital status','martial status','civil status','الحالة الاجتماعية']],
+  ['religion',    ['religion','الديانة']],
+  ['occupation',  ['occupation','profession','job','المهنة']],
+  ['entry-date',  ['entry date','date of entry','تاريخ الدخول']],
+  ['entry-loc',   ['entry place','entry location','port of entry','منفذ الدخول','مكان الدخول']],
+  ['pass-num',    ['passport number','passport no','رقم الجواز']],
+  ['nationality', ['nationality','الجنسية']],
+  ['iqama-issue', ['iqama issue','Issue Date','تاريخ إصدار الإقامة','تاريخ الإصدار','إصدار الإقامة']],
+  ['iqama-expiry',['residency expiry','iqama expiry','residence expiry','تاريخ انتهاء الإقامة','انتهاء الإقامة']],
+  ['iqama-loc',   ['iqama issue location','residence issue location', 'Issue Place','جهة الإصدار']],
+  ['pass-issue',  ['passport issue','passport issue date','تاريخ إصدار الجواز']],
+  ['pass-expiry', ['passport expiry','passport expiry date','Expiry Date(Gregorian)','تاريخ الانتهاء ميلادي','تاريخ انتهاء الجواز']],
+  ['pass-loc',    ['passport issue place','place of issue','مكان إصدار الجواز','مكان الإصدار']],
+  ['emp-num',     ['sponsor id','sponsor number','employer number','رقم الكফিল','رقم صاحب العمل']],
+  ['emp-name',    ['sponsor name','employer name','اسم الكفيل','اسم صاحب العمل']],
+];
+
+function parseAndFill(){
+  const rawText=document.getElementById('global-input').value;
+  if(!rawText.trim()){ showStatus('warn','Text box empty!'); return; }
+
+  let filled=0;
+  const filledIds=new Set();
+
+  // Custom Inline Passport String Handler (e.g. A03408734 12/04/2022 Normal دكا 1454/01/01 Expiry Date...)
+  const passInlineRegex = /([A-Z0-9]{7,12})\s+(\d{2}\/\d{2}\/\d{4})\s+(\w+)\s+([\u0600-\u06FF\s]+)\s+(\d{4}\/\d{2}\/\d{2})([\s\S]*?Expiry Date\(Gregorian\):\s*(\d{2}\/\d{2}\/\d{4}))?/;
+  const inlineMatch = rawText.match(passInlineRegex);
+  
+  if(inlineMatch){
+    setField('pass-num', inlineMatch[1]);
+    setField('pass-issue', inlineMatch[2]);
+    setField('pass-loc', inlineMatch[4].trim());
+    filledIds.add('pass-num').add('pass-issue').add('pass-loc');
+    filled += 3;
+    
+    if(inlineMatch[7]){
+      setField('pass-expiry', inlineMatch[7]);
+      filledIds.add('pass-expiry');
+      filled++;
+    }
+  }
+
+  const lines=rawText.split('\n');
+  lines.forEach(line=>{
+    const delimIdx=line.search(/[:\t]/);
+    if(delimIdx===-1) return;
+    const key=line.substring(0,delimIdx).trim().toLowerCase();
+    const val=line.substring(delimIdx+1).replace(/^[\s:\t]+/,'').trim();
+    if(!val) return;
+
+    for(const [fieldId,keywords] of FIELD_PATTERNS){
+      if(filledIds.has(fieldId)) continue;
+      if(fieldId==='report-date') continue; 
+      if(keywords.some(k=>key.includes(k.toLowerCase()))){
+        setField(fieldId,val);
+        filledIds.add(fieldId);
+        filled++;
+        break;
+      }
+    }
+  });
+
+  if(filled===0){
+    const dateMatches=[...rawText.matchAll(/\b(\d{2}[\/\-]\d{2}[\/\-]\d{4}|\d{4}[\/\-]\d{2}[\/\-]\d{2})\b/g)].map(m=>m[1]);
+    const numMatches=[...rawText.matchAll(/\b(\d{8,12})\b/g)].map(m=>m[1]);
+    if(dateMatches[0]) setField('birth-date',dateMatches[0]);
+    if(dateMatches[1]) setField('iqama-issue',dateMatches[1]); 
+    if(dateMatches[2]) setField('iqama-expiry',dateMatches[2]);
+    if(numMatches[0])  setField('iqama-num',numMatches[0]);
+    if(numMatches[1])  setField('pass-num',numMatches[1]);
+    filled=dateMatches.length+numMatches.length;
+  }
+
+  if(filled>0){
+    showStatus('ok', `✅ ${filled}টি ফিল্ড সফলভাবে ফিলআপ হয়েছে।`);
+  } else {
+    showStatus('warn','⚠️ কোনো ফিল্ড ম্যাচ হয়নি।');
+  }
+}
+
+function showStatus(type,msg){
+  const el=document.getElementById('parse-status');
+  el.className='parse-status '+type;
+  el.textContent=msg;
+  setTimeout(()=>{ el.className='parse-status'; },5000);
+}
+
+// ═══════════════════════════════════════════════════
+// 7. CLEAR ALL
+// ═══════════════════════════════════════════════════
+function clearAll(){
+  if(!confirm('সব field clear করবেন?')) return;
+  document.querySelectorAll('.panel-body input[type=text]:not([readonly])').forEach(inp=>{
+    inp.value=''; inp.classList.remove('filled');
+  });
+  document.querySelectorAll('.ft').forEach(el=>el.innerText='');
+  document.querySelectorAll('.hijri-badge').forEach(b=>b.style.display='none');
+  document.getElementById('global-input').value='';
+  setTodayHijri();
+  showStatus('ok','✅ সব ক্লিয়ার করা হয়েছে।');
+}
+
+// ═══════════════════════════════════════════════════
+// 8. PDF DOWNLOAD (300 DPI - Fixed Full Page)
+// ═══════════════════════════════════════════════════
+async function downloadPDF(){
+  const btn=document.getElementById('dl-btn');
+  const el=document.getElementById('pdf-area');
+  const idNum=document.getElementById('i-iqama-num').value||'Document';
+  document.getElementById('img-status').style.display='none';
+  btn.disabled=true; btn.innerText='⏳ Generating PDF...';
+
+  const opt={
+    margin:0,
+    filename:'Muqeem_'+idNum+'.pdf',
+    image:{type:'jpeg',quality:1.0},
+    html2canvas:{
+      scale:3,
+      useCORS:true,
+      allowTaint:true,
+      logging:false,
+      backgroundColor:'#ffffff',
+      imageTimeout:15000,
+      removeContainer:true,
+      onclone: function(clonedDoc) {
+        function isRTL(text) {
+          return /[\u0600-\u06FF]/.test(text);
+        }
+        clonedDoc.querySelectorAll('.ft').forEach(function(el) {
+          var text = el.innerText || el.textContent || '';
+          if (!text.trim()) return;
+          var words = text.split(' ');
+          if (words.length < 2) return;
+          if (isRTL(text)) {
+            // Keep RTL direction — use flex-row-reverse so words stay in correct RTL order
+            // and gap is injected between them as real pixel spacing
+            el.style.display = 'flex';
+            el.style.flexDirection = 'row';
+            el.style.direction = 'rtl';
+            el.style.gap = '9px';
+            el.style.alignItems = 'baseline';
+            el.innerHTML = words.map(function(w) {
+              return '<span style="white-space:nowrap;flex-shrink:0;">' + w + '</span>';
+            }).join('');
+          } else {
+            el.innerHTML = words.map(function(w) {
+              return '<span style="display:inline-block;white-space:nowrap;">' + w + '</span>';
+            }).join('<span style="display:inline-block;width:9px;min-width:9px;"></span>');
+          }
+        });
+      }
+    },
+    jsPDF:{unit:'px',format:[1653,2339],orientation:'portrait',hotfixes:['px_scaling']}
+  };
+  try{
+    await document.fonts.ready;
+    await new Promise(function(r){ setTimeout(r, 300); });
+    await html2pdf().set(opt).from(el).save();
+    btn.innerText='✅ Downloaded!';
+    setTimeout(()=>{ btn.disabled=false; btn.innerText='⬇ Download PDF'; },2500);
+  }catch(e){
+    btn.innerText='❌ Error - Try Again'; btn.disabled=false; console.error(e);
+  }
+}
+</script>
+</body>
+</html>
